@@ -1,4 +1,4 @@
-package com.m0e_n00b.questpinyinprobe;
+package com.m0e_n00b.questimepinyin;
 
 /** Android inputType policy kept free of Android runtime dependencies for JVM verification. */
 public final class InputPolicy {

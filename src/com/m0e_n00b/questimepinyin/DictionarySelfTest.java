@@ -1,4 +1,4 @@
-package com.m0e_n00b.questpinyinprobe;
+package com.m0e_n00b.questimepinyin;
 import android.content.Context;
 import android.util.Log;
 import java.util.List;

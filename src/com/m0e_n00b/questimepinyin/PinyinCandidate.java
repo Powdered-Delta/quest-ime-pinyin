@@ -1,4 +1,4 @@
-package com.m0e_n00b.questpinyinprobe;
+package com.m0e_n00b.questimepinyin;
 /** A candidate consumes a prefix in RAW composition coordinates, never Han character count. */
 public final class PinyinCandidate {
     public final String id, text;

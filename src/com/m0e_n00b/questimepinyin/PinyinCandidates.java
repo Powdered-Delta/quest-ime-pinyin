@@ -1,5 +1,5 @@
 /* Adapted from Wolvic-derived PinyinCandidates (MPL-2.0); see THIRD_PARTY.md. */
-package com.m0e_n00b.questpinyinprobe;
+package com.m0e_n00b.questimepinyin;
 import java.util.*;
 /** Prefix lookup with explicit syllable boundaries and raw-coordinate consumption. */
 public final class PinyinCandidates implements PinyinBackend {

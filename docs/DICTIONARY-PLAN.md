@@ -11,7 +11,7 @@
 | 项目 | 已核对值 |
 |---|---|
 | Wolvic 基线 | 37c7c28b1b269dca9356f449d798dcd1b6bcc8a8 |
-| 原本地数据 | D:/Workspace/unity/viriviri/input-method-engine/src/main/assets/ime/google_pinyin.db |
+| Wolvic 中的数据路径 | `app/src/main/assets/databases/google_pinyin.db` |
 | 大小 | 3,023,872 bytes |
 | SHA-256 | 920f621c690355d33ed6b9732bb7fa3e297b36c379d6b352ef3643be43b83635 |
 | keymaps | 17,120 行 |

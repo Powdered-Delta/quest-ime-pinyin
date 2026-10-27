@@ -1,5 +1,5 @@
 /* Wolvic-derived lookup, MPL-2.0. See THIRD_PARTY.md and assets/ime/notices/. */
-package com.m0e_n00b.questpinyinprobe;
+package com.m0e_n00b.questimepinyin;
 import android.content.Context;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;

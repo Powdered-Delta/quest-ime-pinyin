@@ -1,4 +1,4 @@
-package com.m0e_n00b.questpinyinprobe;
+package com.m0e_n00b.questimepinyin;
 import java.util.*;
 public final class PinyinCandidatesTest {
     private static int checks;

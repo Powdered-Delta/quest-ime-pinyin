@@ -38,21 +38,23 @@ New-Item -ItemType Directory -Force -Path $testClasses, $classes, $dex, $deps | 
 
 # JVM tests are intentionally independent of Android and the Xposed framework.
 $pure = @(
-    (Join-Path $projectRoot 'src/com/m0e_n00b/questpinyinprobe/FixedPinyinSession.java'),
-    (Join-Path $projectRoot 'src/com/m0e_n00b/questpinyinprobe/PinyinSession.java'),
-    (Join-Path $projectRoot 'src/com/m0e_n00b/questpinyinprobe/PinyinBackend.java'),
-    (Join-Path $projectRoot 'src/com/m0e_n00b/questpinyinprobe/PinyinCandidate.java'),
-    (Join-Path $projectRoot 'src/com/m0e_n00b/questpinyinprobe/PinyinCandidates.java'),
-    (Join-Path $projectRoot 'src/com/m0e_n00b/questpinyinprobe/AsyncPinyinSession.java'),
-    (Join-Path $projectRoot 'src/com/m0e_n00b/questpinyinprobe/InputPolicy.java'),
-    (Join-Path $projectRoot 'src/com/m0e_n00b/questpinyinprobe/EditorActions.java'),
-    (Join-Path $projectRoot 'src/com/m0e_n00b/questpinyinprobe/CompositionRange.java'),
-    (Join-Path $projectRoot 'src/com/m0e_n00b/questpinyinprobe/CandidateFit.java')
+    (Join-Path $projectRoot 'src/com/m0e_n00b/questimepinyin/FixedPinyinSession.java'),
+    (Join-Path $projectRoot 'src/com/m0e_n00b/questimepinyin/PinyinSession.java'),
+    (Join-Path $projectRoot 'src/com/m0e_n00b/questimepinyin/ChinesePunctuation.java'),
+    (Join-Path $projectRoot 'src/com/m0e_n00b/questimepinyin/PinyinBackend.java'),
+    (Join-Path $projectRoot 'src/com/m0e_n00b/questimepinyin/PinyinCandidate.java'),
+    (Join-Path $projectRoot 'src/com/m0e_n00b/questimepinyin/PinyinCandidates.java'),
+    (Join-Path $projectRoot 'src/com/m0e_n00b/questimepinyin/AsyncPinyinSession.java'),
+    (Join-Path $projectRoot 'src/com/m0e_n00b/questimepinyin/InputPolicy.java'),
+    (Join-Path $projectRoot 'src/com/m0e_n00b/questimepinyin/EditorActions.java'),
+    (Join-Path $projectRoot 'src/com/m0e_n00b/questimepinyin/CompositionRange.java'),
+    (Join-Path $projectRoot 'src/com/m0e_n00b/questimepinyin/CandidateFit.java'),
+    (Join-Path $projectRoot 'src/com/m0e_n00b/questimepinyin/CandidateGrid.java')
 )
 $testSources = @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'tests') -Filter '*.java' -Recurse | ForEach-Object FullName)
 Invoke-Checked $javac (@('-encoding', 'UTF-8', '-source', '8', '-target', '8', '-Xlint:-options', '-d', $testClasses) + $pure + $testSources)
 foreach ($test in $testSources) {
-    $className = 'com.m0e_n00b.questpinyinprobe.' + [IO.Path]::GetFileNameWithoutExtension($test)
+    $className = 'com.m0e_n00b.questimepinyin.' + [IO.Path]::GetFileNameWithoutExtension($test)
     Invoke-Checked $java @('-ea', '-cp', $testClasses, $className)
 }
 if ($TestsOnly) { Write-Output 'RESULT=tests_passed'; return }
@@ -125,7 +127,7 @@ try {
             '-keyalg', 'RSA', '-keysize', '2048', '-validity', '10000', '-storepass', 'android',
             '-keypass', 'android', '-dname', 'CN=Android Debug,O=Android,C=US')
     }
-    $apk = Join-Path $buildRoot 'quest-pinyin-probe.apk'
+    $apk = Join-Path $buildRoot 'quest-ime-pinyin.apk'
     Invoke-Checked (Join-Path $buildTools 'apksigner.bat') @('sign', '--ks', $keystore,
         '--ks-key-alias', 'androiddebugkey', '--ks-pass', 'pass:android', '--key-pass', 'pass:android',
         '--v1-signing-enabled', 'true', '--v2-signing-enabled', 'true', '--out', $apk, $aligned)
@@ -142,7 +144,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'APK manifest inspection failed.' }
     $manifestDump | Set-Content -LiteralPath (Join-Path $buildRoot 'apk-badging.txt') -Encoding UTF8
     $hash = (Get-FileHash -LiteralPath $apk -Algorithm SHA256).Hash.ToLowerInvariant()
-    "$hash  quest-pinyin-probe.apk" | Set-Content -LiteralPath (Join-Path $buildRoot 'SHA256SUMS.txt') -Encoding UTF8
+    "$hash  quest-ime-pinyin.apk" | Set-Content -LiteralPath (Join-Path $buildRoot 'SHA256SUMS.txt') -Encoding UTF8
     $packed = [IO.Compression.ZipFile]::OpenRead($apk)
     try {
         $entry = $packed.GetEntry('assets/ime/google_pinyin.db')

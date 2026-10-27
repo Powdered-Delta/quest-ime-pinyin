@@ -1,4 +1,4 @@
-package com.m0e_n00b.questpinyinprobe;
+package com.m0e_n00b.questimepinyin;
 
 public final class InputPolicyTest {
     public static void main(String[] args) {

@@ -1,67 +1,63 @@
-# Quest IME Pinyin
+# Meta Quest IME Pinyin 拼音输入法
 
-为 Meta Quest 系统键盘添加中文拼音输入的 Xposed 模块，当前在 Vector（LSPosed 分支）上开发与验证。
+[English](README.en.md)
 
-项目保留系统键盘的空间面板、QWERTY 按键及原输入连接，向语言菜单增加 **中文（拼音）**，提供中文候选、组合文本下划线及覆盖按键区域的展开候选区。
+为 Meta Quest 系统键盘添加中文拼音输入的 Xposed 模块。项目针对 Vector（LSPosed 分支）开发，复用系统键盘的空间面板、QWERTY 按键和原输入连接，通过语言菜单提供“中文（拼音）”、离线词库候选、组合文本下划线及展开候选区。
 
-**当前开发版本为 0.11.0-alpha.1（versionCode 11）。** 已接入离线 SQLite 拼音词库及串行异步候选后端，固定 `ni/hao` 会话仅保留作回归。尚未调用 iWnn 拼音函数；仍只支持下表固定宿主，设备验收情况见验证记录。
+**当前版本：0.0.1（versionCode 20）。** Android 包名为 `com.m0e_n00b.questimepinyin`。当前包含串行异步 SQLite 拼音候选后端，并修复组合输入中的部分选字、光标移动、退格、插入和候选提交行为。尚未调用 iWnn 拼音函数；目前只适配下文列出的 VrShell 版本。
 
-## 当前能力与验证边界
-
-- Meta Quest Browser 顶部地址／搜索栏：用户已确认中文候选和上屏正常。
-- 组合文本：用户确认原输入框及键盘顶部镜像均有下划线。
-- 分段选字：0.8 用户确认选择单字后保留 `hao`，可继续选字。
-- 顶部候选按实际词宽动态容纳前 X 项；展开区只显示余下候选，覆盖整个按键区。
-- 0.9 增加 `h` / `ha` 及 `nih` / `niha` 前缀匹配；0.10 移除两个候选区域的容器左边距。相关本地检查通过，最新视觉复验由用户明确跳过。
-- 密码、邮箱、数字等受保护或非文本字段保留原系统行为。
-
-当前只适配这一份 VrShell：
+## 支持范围
 
 | 项目 | 已核对值 |
 |---|---|
-| 包名／进程 | `com.oculus.vrshell` 主进程 |
-| 版本 | `207.0.0.466.436` / `1045683657` |
-| APK SHA-256 | `9c2f1c503031f3adb21964463c8c89c13b790b45c5375ccbd3ed01c5b5c17ed4` |
+| 宿主包名／进程 | `com.oculus.vrshell` 主进程 |
+| 宿主版本 | `207.0.0.466.436` / `1045683657` |
+| 宿主 APK SHA-256 | `9c2f1c503031f3adb21964463c8c89c13b790b45c5375ccbd3ed01c5b5c17ed4` |
 | 实测设备／框架 | Quest 2，Vector 2.2 build 3080 |
-| 模块接口 | legacy Xposed API 82，compile-only |
+| Xposed 接口 | legacy API 82，编译期 stub |
 
-宿主版本或摘要不匹配时不安装行为 Hook。其他系统版本需要独立适配，不能直接删除指纹保护。
+Meta Quest Browser 顶部地址／搜索栏已通过用户交互验收。宿主版本或 APK 摘要不匹配时，模块不会安装输入行为 Hook。其他系统版本需要独立适配。
 
-## Windows 构建
+## 构建
 
-需要 JDK 17+、Android SDK platform `android-35` 和 build-tools `37.0.0`，无需 Gradle 或 ViriViri 工程。
+需要 Windows、JDK 17+、Android SDK `android-35` 和 build-tools `37.0.0`。无需 Gradle。
 
 ```powershell
-.\build-windows.ps1 -JdkHome 'C:\path\to\jdk-17' -SdkRoot 'C:\path\to\Android\Sdk'
-# 仅运行纯 Java 回归检查
-.\build-windows.ps1 -JdkHome 'C:\path\to\jdk-17' -TestsOnly
+$env:JAVA_HOME = '安装 JDK 17 的本机路径'
+$env:ANDROID_SDK_ROOT = '安装 Android SDK 的本机路径'
+.\build-windows.ps1
+# 仅运行纯 Java 回归测试
+.\build-windows.ps1 -TestsOnly
 ```
 
-首次完整构建会下载并校验官方 Xposed API 82 stub；内置词库也会校验源文件及 APK 中的摘要。输出为 `build/quest-pinyin-probe.apk`，沿用历史文件名。同时输出 `build/build-info.json`，包含源码提交、脏状态、安装版本、APK／词库／签名证书及宿主摘要。脚本仅构建，不安装、不启用模块、不操作设备。
+完整构建会校验 Xposed API 82 stub 和内置词库的 SHA-256，输出 `build/quest-ime-pinyin.apk`、摘要文件及构建清单。脚本不会安装或启动 APK。构建签名是本机调试密钥；不得提交或分发私钥。发布构建应使用维护者单独管理的签名。
 
-当前 Android 包名 `com.m0e_n00b.questpinyinprobe`、入口类和偏好名保留，用于兼容已安装原型；本次独立建仓没有更改这些标识。模块显示名称已更新为 Quest IME Pinyin；入口类、包名和偏好名保持兼容。
+## 安装与启用
 
-`build/`、`deps/` 和签名密钥均不进入 Git。新克隆会生成自己的本地调试签名；同包名覆盖安装必须使用原安装版本对应的签名。不得将维护者密钥提交或随贡献包分发。
+在兼容的 Xposed 环境安装模块，在 Vector 中只为 `com.oculus.vrshell` 设置作用域并启用模块，然后重启 VrShell。打开系统键盘后，在语言菜单选择“中文（拼音）”，输入 `nihao` 验证候选。包名从历史原型变更为 `com.m0e_n00b.questimepinyin`，升级时需要在 Vector 中为新包重新配置作用域。
 
-## 使用与调试
+详细流程、安全边界与故障恢复见[开发与二开指南](docs/DEVELOPMENT.md)。
 
-在已具备兼容 Xposed 环境的设备安装模块后，在管理器中仅将作用域设为 `com.oculus.vrshell`，启用并重启对应进程。打开系统键盘，语言菜单选择 **中文（拼音）**，用 `nihao` 测试候选。具体设备命令、恢复方法及证据要求见 [二开指南](docs/DEVELOPMENT.md)。
+## 已知问题
 
-## 文档入口
+- 拼音组合期间将光标移到组合最左端后按退格，目前不会删除组合前的宿主字符；该问题涉及 composing 区与宿主光标边界，待明确编辑语义后单独修复。
 
-| 文档 | 内容 |
-|---|---|
-| [版本控制](docs/VERSION-CONTROL.md) | 分支、版本、基线、发布标签与产物记录 |
-| [架构](docs/ARCHITECTURE.md) | Hook → 中文会话 → 编辑事务 → 候选 UI |
-| [输入行为规范](docs/INPUT-CONTRACT.md) | 前缀、候选消费、按键、焦点及几何约束 |
-| [开发规范与二开](docs/DEVELOPMENT.md) | Windows 构建、签名、日志、设备验证及恢复 |
-| [宿主适配](docs/HOST-ADAPTER.md) | 版本指纹、混淆符号及资源边界 |
-| [真实词库下一阶段](docs/DICTIONARY-PLAN.md) | Wolvic 词库、异步接入和繁体扩展 |
-| [独立建仓验证](docs/EXTRACTION-VERIFICATION.md) | 独立构建、源码完整性和产物摘要 |
-| [词库后端验证](docs/SQLITE-VALIDATION.md) | 当前 alpha 构建与真实 SQLite 自检证据 |
-| [设备验证](docs/DEVICE-VALIDATION.md) | 观察记录与尚待验证项 |
-| [实现沿革](docs/IMPLEMENTATION-HISTORY.md) | 原型迭代、行为及构建记录 |
-| [贡献指南](CONTRIBUTING.md) | 提交范围与验证要求 |
-| [第三方来源](THIRD_PARTY.md) | API、参考实现及未来资源来源 |
+## 文档
 
-仓库包含固定来源和摘要的原始 SQLite 词库及来源记录，不包含原系统 APK、反编译宿主代码、屏幕截图或 native 引擎。词库独立数据许可仍需在公开分发前核定；当前没有发布或推送远程。项目不使用 Trellis。
+- [架构](docs/ARCHITECTURE.md)
+- [输入行为规范](docs/INPUT-CONTRACT.md)
+- [宿主适配](docs/HOST-ADAPTER.md)
+- [版本控制与发布](docs/VERSION-CONTROL.md)
+- [已知问题](docs/KNOWN-ISSUES.md)
+- [设备验证记录](docs/DEVICE-VALIDATION.md)
+- [贡献指南](CONTRIBUTING.md)
+- [第三方来源与许可说明](THIRD_PARTY.md)
+- [词库替换说明](docs/DICTIONARY-SWAP.md)
+
+## 许可与词库
+
+Inspired by [Lumince/singularity](https://github.com/Lumince/singularity) and [Vector](https://github.com/JingMatrix/Vector).
+
+拼音候选及 SQLite 查询代码参考 [Wolvic](https://github.com/Igalia/wolvic)，固定参考提交为 `37c7c28b1b269dca9356f449d798dcd1b6bcc8a8`。对应派生代码按 **MPL-2.0** 提供，许可文本和来源记录见 [`assets/ime/notices/`](assets/ime/notices/)。
+
+词库文件 `google_pinyin.db` 由 Wolvic 携带，来源谱系追溯至 Android 开源项目 [PinyinIME](https://android.googlesource.com/platform/packages/inputmethods/PinyinIME/) 和 [libgooglepinyin](https://code.google.com/archive/p/libgooglepinyin)，相关上游代码采用 **Apache-2.0**。本项目保留 Apache-2.0 致谢和许可证文本；数据库文件的具体上游版权声明仍以对应发布版本为准。

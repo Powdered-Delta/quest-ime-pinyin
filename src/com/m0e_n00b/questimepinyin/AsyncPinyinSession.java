@@ -1,4 +1,4 @@
-package com.m0e_n00b.questpinyinprobe;
+package com.m0e_n00b.questimepinyin;
 import java.util.*;
 import java.util.concurrent.Executor;
 /** Serial worker actor. Accepted editor results are delivered in order on the owner thread. */

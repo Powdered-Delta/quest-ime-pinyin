@@ -1,4 +1,4 @@
-package com.m0e_n00b.questpinyinprobe;
+package com.m0e_n00b.questimepinyin;
 
 /** Same two-pass natural-width rule as SearchCandidateStrip: reserve an arrow only on overflow. */
 public final class CandidateFit {

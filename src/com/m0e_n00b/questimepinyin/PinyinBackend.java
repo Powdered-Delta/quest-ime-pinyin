@@ -1,4 +1,4 @@
-package com.m0e_n00b.questpinyinprobe;
+package com.m0e_n00b.questimepinyin;
 import java.util.List;
 /** Called only on the serial worker, including initialization and close. */
 public interface PinyinBackend {

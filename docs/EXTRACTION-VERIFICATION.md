@@ -1,7 +1,7 @@
 # 独立建仓验证 — 2026-10-27
 
-- 仓库位置：D:/Workspace/quest-ime-pinyin。
-- 原目录：D:/Workspace/unity/viriviri/tools/quest-pinyin-probe，保留原样供历史对照。
+- 本仓库包含独立源码、纯 Java 测试和 Windows 构建脚本，不依赖其他应用的构建图。
+- 历史参考实现不属于本仓库；本项目保留必要的来源与许可记录，不复制宿主 APK 或反编译宿主代码。
 - src / tests / assets / res 共 15 个文件与抽离源逐字节一致；Android 包名及版本保留 0.10-probe / versionCode 10。
 - 从新仓库目录执行完整 build-windows.ps1，使用 JDK 17、android-35、build-tools 37.0.0，退出码 0。
 - 130 项纯 Java 检查通过；Java / D8 / aapt2 / 签名及对齐检查通过，DEX 未打包 Xposed 框架实现。

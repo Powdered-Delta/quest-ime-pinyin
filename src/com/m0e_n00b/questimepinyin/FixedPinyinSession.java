@@ -1,4 +1,4 @@
-package com.m0e_n00b.questpinyinprobe;
+package com.m0e_n00b.questimepinyin;
 import java.util.*;
 /** Deterministic fixture backend retained for regression tests only. */
 public final class FixedPinyinSession extends PinyinSession {

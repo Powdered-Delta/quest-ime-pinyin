@@ -1,4 +1,4 @@
-package com.m0e_n00b.questpinyinprobe;
+package com.m0e_n00b.questimepinyin;
 
 public final class FixedPinyinSessionTest {
     private static int checks;
@@ -26,7 +26,7 @@ public final class FixedPinyinSessionTest {
         yes(session.backspace().deleteBeforeCursor);
 
         session.feed("NIHAO");
-        equal("你好", session.enter().committedText);
+        equal("NIHAO", session.enter().committedText);
         yes(session.enter().requestEditorAction);
         session.feed("other");
         equal("other ", session.space().committedText);
@@ -38,7 +38,7 @@ public final class FixedPinyinSessionTest {
         equal("", session.getComposition());
 
         session.feed("nihao");
-        equal("nihao!", session.feed("!").committedText);
+        equal("nihao！", session.feed("!").committedText);
         equal("你好", session.feed("nihao ").committedText);
         equal("你好", session.feed("你好").committedText);
         equal("", session.getComposition());
@@ -51,8 +51,21 @@ public final class FixedPinyinSessionTest {
         equal("你", session.commitCandidate(1).committedText);
         equal("hao", session.getComposition());
         equal("好", session.getCandidates().get(0));
+        equal("hao", session.enter().committedText);
+        equal("", session.getComposition());
+        session.feed("nihao");
+        equal("你", session.commitCandidate(1).committedText);
+        equal("hao", session.getComposition());
         equal("好", session.commitCandidate(0).committedText);
         equal("", session.getComposition());
+        session.feed("nibao");
+        session.moveCursor(3);
+        session.backspace();
+        session.moveCursor(2);
+        session.feed("h");
+        equal("nihao", session.getComposition());
+        equal("你好", session.getCandidates().get(0));
+        session.reset();
         session.feed("ni");
         equal(20, session.getCandidates().size());
         equal("泥", session.commitCandidate(2).committedText);

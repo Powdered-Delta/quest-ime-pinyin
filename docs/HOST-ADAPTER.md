@@ -7,7 +7,7 @@
 | 注入 | Application.attach / MainHook | 取得宿主 ClassLoader 后核对指纹 |
 | 键盘／按键 | X.1gB / X.1gC | 模型构造、语言菜单原生按键 |
 | 按键监听 | X.1gM.A0A / A0B / AEu | 上层拦截，避免 Latin 原处理重复消费 |
-| 文本命令 | X.1hA / KeyboardInputMethodService.AKE | TEXT / COMPOSE / COMMAND |
+| 文本命令 | X.1hA / KeyboardInputMethodService.AKE | TEXT / COMPOSE / COMMAND / REPLACE |
 | 宿主组合缓存 | A00 / A0Q | 组合长度／StringBuilder，与连接状态同步 |
 | 键盘服务取面板 | A8H | 当前 ViewGroup |
 | 状态更新 | X.1gL.A02 | 更新可见候选 |
@@ -16,14 +16,14 @@
 | 镜像输入框 | 0x7f09026e | 本次组合下划线 |
 | SuggestionPanelView | 0x7f090272 | 候选条及原子视图恢复 |
 
-HostAdapter 中的反射声明和布局允许列表是更精确的事实来源。不要根据此表重新拼装不同签名。
+文本按键事件最后一个 boolean 表示滑选文本是否替换光标前一字符；中文路径必须传入会话并以 `REPLACE` 发给宿主。HostAdapter 中的反射声明和布局允许列表是更精确的事实来源。不要根据此表重新拼装不同签名。
 
 ## 新版本适配步骤
 
 1. 只读记录新 APK 版本、摘要、包名、进程和代码／资源差异，不先放宽校验。
 2. 沿模型 → 事件 → 文本提交 → 连接生命周期确认真实调用链，反编译 Java 仅用于导航，必要成员与 DEX 对照。
 3. 核对语言菜单空位、取消键、命中缓存和事件所有者，避免重复上屏或让原语言按键不可用。
-4. 核对 A00/A0Q 以及 onUpdateSelection 的实际语义。宿主 override 不调用 super 时，Hook 基类不会覆盖该行为。
+4. 核对 A00/A0Q 以及 onUpdateSelection 的实际语义。宿主可能在光标移动期间短暂报告无效 composing 范围；适配层需使用最近一次有效范围保留组合。宿主 override 不调用 super 时，Hook 基类不会覆盖该行为。
 5. 为不同宿主建立明确适配分支／表，不把某版本数字替换为猜测值。缺成员时中止适配并恢复已改状态。
 6. 经构建和授权设备验收后再将新指纹列入支持矩阵；同时保留旧版本路径及其回归证据。
 

@@ -1,4 +1,4 @@
-package com.m0e_n00b.questpinyinprobe;
+package com.m0e_n00b.questimepinyin;
 
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -73,6 +73,14 @@ final class HostAdapter {
     private boolean candidatesExpanded;
     private int visibleCandidateCount;
     private WeakReference<View> expandedCandidates = new WeakReference<>(null);
+    private View keyboardLayoutView;
+    private View.OnLayoutChangeListener keyboardLayoutListener;
+    private int lastKeyboardWidth = -1;
+    private int lastKeyboardHeight = -1;
+    // Android may report composingStart/composingEnd as -1 for a transient cursor move.
+    // Keep the last verified range so left/right navigation does not discard the session.
+    private int knownCompositionStart = -1;
+    private int knownCompositionEnd = -1;
     private WeakReference<Spannable> underlinedMirror = new WeakReference<>(null);
     private final UnderlineSpan mirrorUnderline = new UnderlineSpan();
     private long generation;
@@ -167,11 +175,13 @@ final class HostAdapter {
                     int eventCode = (int) get(keyEvent, "A00");
                     int kind = (Integer) p.args[1];
                     String input = (String) p.args[3];
+                    boolean replacePrevious = p.args[p.args.length - 1] instanceof Boolean
+                            && (boolean) p.args[p.args.length - 1];
                     AsyncPinyinSession.Action action;
                     if (eventCode == -5) action = PinyinSession::backspace;
                     else if (eventCode == 1 || (kind == 1 && " ".equals(input))) action = PinyinSession::space;
                     else if (eventCode == -2) action = PinyinSession::enter;
-                    else if (kind == 1 && input != null) action = model -> model.feed(input);
+                    else if (kind == 1 && input != null) action = model -> model.feed(input, replacePrevious);
                     else return;
                     if (sessionDestination.get() != active.getCurrentInputConnection()) {
                         session.reset();
@@ -221,8 +231,12 @@ final class HostAdapter {
                     }
                     int start = (int) p.args[2], end = (int) p.args[3];
                     int composingStart = (int) p.args[4], composingEnd = (int) p.args[5];
-                    boolean outsideComposition = composingStart >= 0
-                            && (start < composingStart || end > composingEnd);
+                    if (composingStart >= 0 && composingEnd >= composingStart) {
+                        knownCompositionStart = composingStart;
+                        knownCompositionEnd = composingEnd;
+                    }
+                    boolean outsideComposition = knownCompositionStart >= 0
+                            && (start < knownCompositionStart || end > knownCompositionEnd);
                     if (awaitingCompositionUpdate && start == end && !outsideComposition
                             && (composingStart < 0 || composingEnd - composingStart != session.getComposition().length())) {
                         // The host override finishes composing on mismatched lengths. A queued
@@ -237,9 +251,19 @@ final class HostAdapter {
                     int start = (int) p.args[2], end = (int) p.args[3];
                     int composingStart = (int) p.args[4], composingEnd = (int) p.args[5];
                     cancelCompositionWait();
-                    if (composingStart < 0 || start < composingStart || end > composingEnd || start != end) {
+                    boolean outsideComposition = knownCompositionStart >= 0
+                            && (start < knownCompositionStart || end > knownCompositionEnd);
+                    // A collapsed caret move inside the last known composition is an edit
+                    // target change, not a request to finish the Pinyin session. Invalid
+                    // composing bounds are also tolerated while the host recomputes them.
+                    if (start != end || outsideComposition) {
                         resetSession(false);
                         updateUi();
+                    } else if (knownCompositionStart >= 0) {
+                        int cursor = start - knownCompositionStart;
+                        if (cursor >= 0 && cursor <= session.getComposition().length()) {
+                            session.submit(model -> model.moveCursor(cursor));
+                        }
                     }
                 }
             });
@@ -317,6 +341,18 @@ final class HostAdapter {
                 editing = true;
                 deferredSelection = null;
                 destination.beginBatchEdit();
+                // A collapsed caret move can make the host temporarily report no
+                // composing region. Re-anchor the last verified range inside this
+                // batch so edits replace the preedit instead of inserting a duplicate.
+                if (!result.editorUnchanged && hadComposition
+                        && knownCompositionStart >= 0 && knownCompositionEnd >= knownCompositionStart) {
+                    destination.setComposingRegion(knownCompositionStart, knownCompositionEnd);
+                    int caret = !result.committedText.isEmpty()
+                            ? knownCompositionEnd
+                            : Math.max(knownCompositionStart,
+                            Math.min(knownCompositionEnd, knownCompositionStart + result.cursor));
+                    destination.setSelection(caret, caret);
+                }
             }
             public void send(String kind, String value) throws Exception { HostAdapter.this.send(active, kind, value); }
             public void end() {
@@ -334,6 +370,13 @@ final class HostAdapter {
                 }
             }
         });
+        if (!result.committedText.isEmpty() && result.composition.isEmpty()) {
+            knownCompositionStart = -1;
+            knownCompositionEnd = -1;
+        }
+        if (!result.editorUnchanged && !result.composition.isEmpty() && knownCompositionStart >= 0) {
+            destination.setSelection(knownCompositionStart + result.cursor, knownCompositionStart + result.cursor);
+        }
         updateUi();
     }
 
@@ -343,7 +386,7 @@ final class HostAdapter {
             if (((Enum<?>) candidate).name().equals(kind)) action = candidate;
         }
         if (active == null || action == null) throw new IllegalStateException("Missing text destination");
-        if (kind.equals("COMPOSE") || kind.equals("TEXT")) cancelCompositionWait();
+        if (kind.equals("COMPOSE") || kind.equals("TEXT") || kind.equals("REPLACE")) cancelCompositionWait();
         if (kind.equals("COMPOSE") && !value.isEmpty()) {
             awaitingCompositionUpdate = true;
             final long revision = generation;
@@ -376,7 +419,14 @@ final class HostAdapter {
             if (connection == null || !connection.setComposingText(styled, 1)) {
                 throw new IllegalStateException("Editor rejected composition");
             }
-        } else sendAction.invoke(active, action, value);
+            if (knownCompositionStart >= 0) knownCompositionEnd = knownCompositionStart + value.length();
+        } else {
+            if (kind.equals("TEXT") && knownCompositionStart >= 0) {
+                knownCompositionStart += value.length();
+                knownCompositionEnd = knownCompositionStart;
+            }
+            sendAction.invoke(active, action, value);
+        }
     }
 
     /** Permit only ordinary text fields; unknown/null connections fail closed to the original host. */
@@ -392,6 +442,8 @@ final class HostAdapter {
         if (clearEditor && !session.getComposition().isEmpty() && allowed(service.get())) send(service.get(), "COMPOSE", "");
         session.reset();
         sessionDestination.clear();
+        knownCompositionStart = -1;
+        knownCompositionEnd = -1;
         candidatesExpanded = false;
         cancelCompositionWait();
         generation++;
@@ -429,6 +481,7 @@ final class HostAdapter {
             ViewGroup current = (ViewGroup) value;
             if (current != panel.get()) { restoreSuggestion(); panel = new WeakReference<>(current); }
             View keyboardView = current.findViewById(0x7f090267);
+            ensureKeyboardLayoutListener(keyboardView);
             Object currentModel = keyboardView == null ? null : get(keyboardView, "A0K");
             if (currentModel == null || !InputPolicy.supportsLayout((int) get(currentModel, "A0E"))) {
                 diagnostic("ui gate: layout=" + (currentModel == null ? "null"
@@ -473,7 +526,8 @@ final class HostAdapter {
             owner.setVisibility(View.VISIBLE);
             row.setVisibility(View.VISIBLE);
             View keyboard = current.findViewById(0x7f090267);
-            row.setMinimumWidth(keyboard != null && keyboard.getWidth() > 0 ? keyboard.getWidth() : dp(560));
+            int keyboardWidth = keyboard != null && keyboard.getWidth() > 0 ? keyboard.getWidth() : 0;
+            row.setMinimumWidth(keyboardWidth);
             row.removeAllViews();
             LinearLayout choices = new LinearLayout(owner.getContext());
             choices.setOrientation(LinearLayout.HORIZONTAL);
@@ -486,7 +540,7 @@ final class HostAdapter {
                 candidateWidths[i] = candidate.getMeasuredWidth();
                 measuredCandidates.add(candidate);
             }
-            int stripWidth = (keyboard != null && keyboard.getWidth() > 0 ? keyboard.getWidth() : dp(560))
+            int stripWidth = (keyboardWidth > 0 ? keyboardWidth : dp(560))
                     - row.getPaddingLeft() - row.getPaddingRight();
             visibleCandidateCount = CandidateFit.visibleCount(candidateWidths, Math.max(0, stripWidth), dp(4), dp(48));
             for (int i = 0; i < visibleCandidateCount; i++) {
@@ -531,7 +585,35 @@ final class HostAdapter {
             if (hasOverflow) row.addView(expand, new LinearLayout.LayoutParams(dp(48), ViewGroup.LayoutParams.MATCH_PARENT));
             renderExpanded(keyboardView, active);
             updateMirrorUnderline(current);
+            owner.requestLayout();
+            current.requestLayout();
         } finally { updating = false; }
+    }
+
+    private void ensureKeyboardLayoutListener(View keyboard) {
+        if (keyboard == keyboardLayoutView) return;
+        if (keyboardLayoutView != null && keyboardLayoutListener != null) {
+            keyboardLayoutView.removeOnLayoutChangeListener(keyboardLayoutListener);
+        }
+        keyboardLayoutView = keyboard;
+        lastKeyboardWidth = -1;
+        lastKeyboardHeight = -1;
+        if (keyboard == null) { keyboardLayoutListener = null; return; }
+        keyboardLayoutListener = (view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+            int width = right - left;
+            int height = bottom - top;
+            if (width == lastKeyboardWidth && height == lastKeyboardHeight) return;
+            lastKeyboardWidth = width;
+            lastKeyboardHeight = height;
+            if (width > 0 && height > 0 && !updating) {
+                mainHandler.post(() -> {
+                    try { if (!failed) updateUi(); } catch (Throwable failure) { fail(failure); }
+                });
+            }
+        };
+        keyboard.addOnLayoutChangeListener(keyboardLayoutListener);
+        lastKeyboardWidth = keyboard.getWidth();
+        lastKeyboardHeight = keyboard.getHeight();
     }
 
     private Button candidateButton(Context ui, int index, InputMethodService active) {
@@ -589,19 +671,32 @@ final class HostAdapter {
         grid.setPadding(0, dp(4), dp(6), dp(4));
         grid.setClickable(true);
         grid.setFocusable(false);
-        int columns = Math.max(1, (width - grid.getPaddingLeft() - grid.getPaddingRight() + dp(4)) / (dp(84) + dp(4)));
-        for (int start = visibleCandidateCount; start < session.getCandidates().size(); start += columns) {
+        int contentWidth = width - grid.getPaddingLeft() - grid.getPaddingRight();
+        int itemCount = session.getCandidates().size() - visibleCandidateCount;
+        int[] measuredWidths = new int[itemCount];
+        for (int offset = 0; offset < itemCount; offset++) {
+            Button candidate = candidateButton(parent.getContext(), visibleCandidateCount + offset, active);
+            candidate.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+                    View.MeasureSpec.makeMeasureSpec(dp(48), View.MeasureSpec.EXACTLY));
+            measuredWidths[offset] = candidate.getMeasuredWidth();
+        }
+        for (int offset = 0; offset < itemCount; offset++) {
+            measuredWidths[offset] = Math.max(dp(84), Math.min(measuredWidths[offset], contentWidth));
+        }
+        List<List<Integer>> rows = CandidateGrid.pack(measuredWidths, 0, contentWidth, dp(4), dp(84));
+        for (List<Integer> rowCandidates : rows) {
             LinearLayout line = new LinearLayout(parent.getContext());
             line.setOrientation(LinearLayout.HORIZONTAL);
             LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
             rowParams.bottomMargin = dp(4);
             grid.addView(line, rowParams);
-            for (int col = 0; col < columns; col++) {
-                int index = start + col;
-                View cell = index < session.getCandidates().size()
-                        ? candidateButton(parent.getContext(), index, active) : new View(parent.getContext());
-                LinearLayout.LayoutParams cellParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1);
-                if (col > 0) cellParams.setMarginStart(dp(4));
+            for (int item = 0; item < rowCandidates.size(); item++) {
+                int offset = rowCandidates.get(item);
+                int index = visibleCandidateCount + offset;
+                View cell = candidateButton(parent.getContext(), index, active);
+                LinearLayout.LayoutParams cellParams = new LinearLayout.LayoutParams(
+                        measuredWidths[offset], ViewGroup.LayoutParams.MATCH_PARENT);
+                if (item > 0) cellParams.setMarginStart(dp(4));
                 line.addView(cell, cellParams);
             }
         }
@@ -630,9 +725,10 @@ final class HostAdapter {
         if (!(text.getText() instanceof Spannable)) return;
         Spannable value = (Spannable) text.getText();
         int end = text.getSelectionEnd();
-        int start = CompositionRange.start(value, end, session.getComposition());
+        int start = CompositionRange.containingStart(value, end, session.getComposition());
         if (start >= 0) {
-            value.setSpan(mirrorUnderline, start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            value.setSpan(mirrorUnderline, start, start + session.getComposition().length(),
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             underlinedMirror = new WeakReference<>(value);
         }
     }
@@ -646,6 +742,13 @@ final class HostAdapter {
     private void restoreSuggestion() {
         removeExpanded();
         clearMirrorUnderline();
+        if (keyboardLayoutView != null && keyboardLayoutListener != null) {
+            keyboardLayoutView.removeOnLayoutChangeListener(keyboardLayoutListener);
+        }
+        keyboardLayoutView = null;
+        keyboardLayoutListener = null;
+        lastKeyboardWidth = -1;
+        lastKeyboardHeight = -1;
         LinearLayout row = bar.get();
         if (row != null && row.getParent() instanceof ViewGroup) ((ViewGroup) row.getParent()).removeView(row);
         ViewGroup owner = suggestion.get();

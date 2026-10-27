@@ -5,7 +5,7 @@ Target: Quest 2 at `192.168.0.234:5555`. Vector `2.2 / 3080`, API 102. Local ADB
 ## Observed
 
 - Current installed baseline is 0.10-probe: SHA-256 `7b9ffdddff21a250814726db05fed30b5ce015c03a1f087b7245128ac2e5029a`. Installed digest matches; the restarted VrShell process PID 27778 reached `ui ready: layout=7f12007e`. No screenshot was taken for 0.10 at the user's request.
-- Vector module `com.m0e_n00b.questpinyinprobe` enabled via its own shipped CLI.
+- Vector module `com.m0e_n00b.questimepinyin` enabled via its own shipped CLI.
 - Scope list contains exactly `com.oculus.vrshell`, user 0.
 - VrShell was restarted. Module log confirms `hooks installed; fixed-mapping probe; host fingerprint matched` in build 0.7 PID 15974 (earlier build 0.6 PID 8755).
 - The user reported being able to select Chinese and then seeing the `你好` candidate on build 0.2. This is user-observed UI evidence, not an automated assertion of commit behavior.
@@ -36,13 +36,13 @@ Commands ran through `metavr adb -d 192.168.0.234:5555` or `metavr capture`, exc
 
 ```text
 install -r <local APK>
-shell su -c '/data/adb/modules/zygisk_vector/cli scope set com.m0e_n00b.questpinyinprobe com.oculus.vrshell/0'
-shell su -c '/data/adb/modules/zygisk_vector/cli modules enable com.m0e_n00b.questpinyinprobe'
-shell su -c '/data/adb/modules/zygisk_vector/cli scope ls com.m0e_n00b.questpinyinprobe'
+shell su -c '/data/adb/modules/zygisk_vector/cli scope set com.m0e_n00b.questimepinyin com.oculus.vrshell/0'
+shell su -c '/data/adb/modules/zygisk_vector/cli modules enable com.m0e_n00b.questimepinyin'
+shell su -c '/data/adb/modules/zygisk_vector/cli scope ls com.m0e_n00b.questimepinyin'
 shell am force-stop com.oculus.vrshell
 shell am start -n com.oculus.vrshell/.HomeActivity
-shell am start -n com.m0e_n00b.questpinyinprobe/.ProbeActivity
-shell pm path com.m0e_n00b.questpinyinprobe | cut -d: -f2 | xargs sha256sum
+shell am start -n com.m0e_n00b.questimepinyin/.ProbeActivity
+shell pm path com.m0e_n00b.questimepinyin | cut -d: -f2 | xargs sha256sum
 shell su -c 'grep -F QuestPinyinProbe /data/adb/lspd/log/modules_*.log | tail -5'
 ```
 

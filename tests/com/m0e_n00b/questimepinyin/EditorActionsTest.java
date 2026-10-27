@@ -1,4 +1,4 @@
-package com.m0e_n00b.questpinyinprobe;
+package com.m0e_n00b.questimepinyin;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -30,6 +30,10 @@ public final class EditorActionsTest {
         actions.clear();
         EditorActions.emit(session.enter(), false, recorder);
         expect(actions, "COMMAND:ACTION_KEY");
+        actions.clear();
+        session.feed("hao");
+        EditorActions.emit(session.enter(), true, recorder);
+        expect(actions, "TEXT:hao");
         actions.clear();
         session.feed("n");
         EditorActions.emit(session.backspace(), true, recorder);

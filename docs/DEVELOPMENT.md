@@ -5,8 +5,10 @@
 Windows PowerShell、JDK 17+；Android SDK 安装 platform android-35 和 build-tools 37.0.0。Java 源码按 source/target 8 编译，Android minSdk/targetSdk 29；compile API 不等于 targetSdk。
 
 ```powershell
-.\build-windows.ps1 -JdkHome 'D:\Program Files\Java\jdk-17' -SdkRoot "$env:LOCALAPPDATA\Android\Sdk"
-.\build-windows.ps1 -JdkHome 'D:\Program Files\Java\jdk-17' -TestsOnly
+$env:JAVA_HOME = '本机 JDK 17 安装目录'
+$env:ANDROID_SDK_ROOT = '本机 Android SDK 安装目录'
+.\build-windows.ps1
+.\build-windows.ps1 -TestsOnly
 git diff --check
 ```
 
@@ -36,7 +38,7 @@ npx -y metavr doctor
 npx -y metavr adb -d <device> install -r <apk>
 npx -y metavr adb -d <device> shell am force-stop com.oculus.vrshell
 npx -y metavr adb -d <device> shell am start -n com.oculus.vrshell/.HomeActivity
-npx -y metavr adb -d <device> shell am start -n com.m0e_n00b.questpinyinprobe/.ProbeActivity
+npx -y metavr adb -d <device> shell am start -n com.m0e_n00b.questimepinyin/.ProbeActivity
 ```
 
 在 Vector 管理器启用模块，作用域只选 com.oculus.vrshell 对应用户，不勾选系统框架或全部包。CLI 配置必须先查该版本 help，使用模块包名与目标作用域完整参数；不直接修改框架数据库或杀守护进程。
@@ -53,4 +55,4 @@ npx -y metavr adb -d <device> shell am start -n com.m0e_n00b.questpinyinprobe/.P
 
 ## 真实词库自检
 
-ProbeActivity 的“运行真实词库自检”按钮在后台验证固定词组、前缀、部分消费和分隔符，不读取／编辑当前输入框。也可在明确设备授权后，以 am start -n com.m0e_n00b.questpinyinprobe/.ProbeActivity --ez dictionary_self_test true 启动。Android 日志标签为 QuestPinyinDictionary，仅含检查编号／结果。该自检证明模块进程内的 SQLite 资源链；VrShell 进程中的资源读取和原系统键盘交互仍需分别核对。
+ProbeActivity 的“运行真实词库自检”按钮在后台验证固定词组、前缀、部分消费和分隔符，不读取／编辑当前输入框。也可在明确设备授权后，以 am start -n com.m0e_n00b.questimepinyin/.ProbeActivity --ez dictionary_self_test true 启动。Android 日志标签为 QuestPinyinDictionary，仅含检查编号／结果。该自检证明模块进程内的 SQLite 资源链；VrShell 进程中的资源读取和原系统键盘交互仍需分别核对。

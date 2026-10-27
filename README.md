@@ -51,6 +51,7 @@
 
 | 文档 | 内容 |
 |---|---|
+| [版本控制](docs/VERSION-CONTROL.md) | 分支、版本、基线、发布标签与产物记录 |
 | [架构](docs/ARCHITECTURE.md) | Hook → 中文会话 → 编辑事务 → 候选 UI |
 | [输入行为规范](docs/INPUT-CONTRACT.md) | 前缀、候选消费、按键、焦点及几何约束 |
 | [开发规范与二开](docs/DEVELOPMENT.md) | Windows 构建、签名、日志、设备验证及恢复 |

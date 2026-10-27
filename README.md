@@ -58,6 +58,7 @@
 | [宿主适配](docs/HOST-ADAPTER.md) | 版本指纹、混淆符号及资源边界 |
 | [真实词库下一阶段](docs/DICTIONARY-PLAN.md) | Wolvic 词库、异步接入和繁体扩展 |
 | [独立建仓验证](docs/EXTRACTION-VERIFICATION.md) | 独立构建、源码完整性和产物摘要 |
+| [词库后端验证](docs/SQLITE-VALIDATION.md) | 当前 alpha 构建与真实 SQLite 自检证据 |
 | [设备验证](docs/DEVICE-VALIDATION.md) | 观察记录与尚待验证项 |
 | [实现沿革](docs/IMPLEMENTATION-HISTORY.md) | 原型迭代、行为及构建记录 |
 | [贡献指南](CONTRIBUTING.md) | 提交范围与验证要求 |

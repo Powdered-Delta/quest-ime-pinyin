@@ -39,6 +39,11 @@ New-Item -ItemType Directory -Force -Path $testClasses, $classes, $dex, $deps | 
 # JVM tests are intentionally independent of Android and the Xposed framework.
 $pure = @(
     (Join-Path $projectRoot 'src/com/m0e_n00b/questpinyinprobe/FixedPinyinSession.java'),
+    (Join-Path $projectRoot 'src/com/m0e_n00b/questpinyinprobe/PinyinSession.java'),
+    (Join-Path $projectRoot 'src/com/m0e_n00b/questpinyinprobe/PinyinBackend.java'),
+    (Join-Path $projectRoot 'src/com/m0e_n00b/questpinyinprobe/PinyinCandidate.java'),
+    (Join-Path $projectRoot 'src/com/m0e_n00b/questpinyinprobe/PinyinCandidates.java'),
+    (Join-Path $projectRoot 'src/com/m0e_n00b/questpinyinprobe/AsyncPinyinSession.java'),
     (Join-Path $projectRoot 'src/com/m0e_n00b/questpinyinprobe/InputPolicy.java'),
     (Join-Path $projectRoot 'src/com/m0e_n00b/questpinyinprobe/EditorActions.java'),
     (Join-Path $projectRoot 'src/com/m0e_n00b/questpinyinprobe/CompositionRange.java'),
@@ -52,6 +57,11 @@ foreach ($test in $testSources) {
 }
 if ($TestsOnly) { Write-Output 'RESULT=tests_passed'; return }
 
+$dictionary = Join-Path $projectRoot 'assets/ime/google_pinyin.db'
+$dictionarySha = '920f621c690355d33ed6b9732bb7fa3e297b36c379d6b352ef3643be43b83635'
+if (-not (Test-Path -LiteralPath $dictionary) -or (Get-FileHash -LiteralPath $dictionary -Algorithm SHA256).Hash.ToLowerInvariant() -ne $dictionarySha) {
+    throw 'Pinned Pinyin database missing or checksum mismatch.'
+}
 foreach ($path in @($jar, $keytool, $androidJar, (Join-Path $buildTools 'd8.bat'),
     (Join-Path $buildTools 'aapt2.exe'), (Join-Path $buildTools 'apksigner.bat'),
     (Join-Path $buildTools 'zipalign.exe'), (Join-Path $buildTools 'dexdump.exe'))) {
@@ -89,6 +99,21 @@ try {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $archive = [IO.Compression.ZipFile]::Open($unsigned, [IO.Compression.ZipArchiveMode]::Update)
     try {
+        # Windows aapt2 may emit backslashes for nested assets. Java ZipFile lookup uses
+        # exact forward-slash names; normalize before alignment/signing, never afterwards.
+        foreach ($assetEntry in @($archive.Entries)) {
+            if ($assetEntry.FullName.Contains('\')) {
+                $normalizedName = $assetEntry.FullName.Replace('\', '/')
+                $buffer = [IO.MemoryStream]::new()
+                $assetStream = $assetEntry.Open()
+                try { $assetStream.CopyTo($buffer) } finally { $assetStream.Dispose() }
+                $assetEntry.Delete()
+                $normalized = $archive.CreateEntry($normalizedName, [IO.Compression.CompressionLevel]::Optimal)
+                $destination = $normalized.Open()
+                try { $buffer.Position = 0; $buffer.CopyTo($destination) }
+                finally { $destination.Dispose(); $buffer.Dispose() }
+            }
+        }
         [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, (Join-Path $dex 'classes.dex'),
             'classes.dex', [IO.Compression.CompressionLevel]::Optimal) | Out-Null
     } finally { $archive.Dispose() }
@@ -104,7 +129,9 @@ try {
     Invoke-Checked (Join-Path $buildTools 'apksigner.bat') @('sign', '--ks', $keystore,
         '--ks-key-alias', 'androiddebugkey', '--ks-pass', 'pass:android', '--key-pass', 'pass:android',
         '--v1-signing-enabled', 'true', '--v2-signing-enabled', 'true', '--out', $apk, $aligned)
-    Invoke-Checked (Join-Path $buildTools 'apksigner.bat') @('verify', '--verbose', '--print-certs', $apk)
+    $signatureInfo = & (Join-Path $buildTools 'apksigner.bat') verify --verbose --print-certs $apk
+    if ($LASTEXITCODE -ne 0) { throw 'Signature verification failed.' }
+    $signatureInfo | Write-Output
     Invoke-Checked (Join-Path $buildTools 'zipalign.exe') @('-c', '-p', '4', $apk)
     $dexDump = & (Join-Path $buildTools 'dexdump.exe') (Join-Path $dex 'classes.dex')
     if ($LASTEXITCODE -ne 0) { throw 'Dex inspection failed.' }
@@ -116,6 +143,33 @@ try {
     $manifestDump | Set-Content -LiteralPath (Join-Path $buildRoot 'apk-badging.txt') -Encoding UTF8
     $hash = (Get-FileHash -LiteralPath $apk -Algorithm SHA256).Hash.ToLowerInvariant()
     "$hash  quest-pinyin-probe.apk" | Set-Content -LiteralPath (Join-Path $buildRoot 'SHA256SUMS.txt') -Encoding UTF8
+    $packed = [IO.Compression.ZipFile]::OpenRead($apk)
+    try {
+        $entry = $packed.GetEntry('assets/ime/google_pinyin.db')
+        if (-not $entry) { throw 'Packaged dictionary is missing.' }
+        $stream = $entry.Open()
+        $digest = [Security.Cryptography.SHA256]::Create()
+        try { $packedSha = [BitConverter]::ToString($digest.ComputeHash($stream)).Replace('-', '').ToLowerInvariant() }
+        finally { $stream.Dispose(); $digest.Dispose() }
+        if ($packedSha -ne $dictionarySha) { throw 'Packaged dictionary digest mismatch.' }
+    } finally { $packed.Dispose() }
+    [xml]$manifest = Get-Content -LiteralPath (Join-Path $projectRoot 'AndroidManifest.xml') -Raw
+    $androidNamespace = 'http://schemas.android.com/apk/res/android'
+    $revision = & git -C $projectRoot rev-parse HEAD
+    $dirty = @(& git -C $projectRoot status --porcelain).Count -gt 0
+    $certificate = ($signatureInfo | Select-String 'certificate SHA-256 digest:' | Select-Object -First 1).ToString() -replace '^.*certificate SHA-256 digest:\s*', ''
+    [ordered]@{
+        sourceCommit = "$revision".Trim(); sourceDirty = $dirty
+        versionName = $manifest.manifest.GetAttribute('versionName', $androidNamespace)
+        versionCode = $manifest.manifest.GetAttribute('versionCode', $androidNamespace)
+        apk = [IO.Path]::GetFileName($apk); apkSha256 = $hash
+        dictionarySha256 = $dictionarySha; signingCertificateSha256 = $certificate.Trim()
+        hostPackage = 'com.oculus.vrshell'; hostVersionCode = 1045683657
+        hostApkSha256 = '9c2f1c503031f3adb21964463c8c89c13b790b45c5375ccbd3ed01c5b5c17ed4'
+        buildTools = $BuildToolsVersion; compilePlatform = $Platform
+        builtAtUtc = [DateTime]::UtcNow.ToString('o')
+        runtimeVerified = $false
+    } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $buildRoot 'build-info.json') -Encoding utf8
     Write-Output "APK=$apk"
     Write-Output "SHA256=$hash"
     Write-Output 'RESULT=build_verified_runtime_unverified'

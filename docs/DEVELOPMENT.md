@@ -12,7 +12,7 @@ git diff --check
 
 路径为维护环境示例，按本机位置修改。脚本基于 PSScriptRoot，不依赖原工程。Xposed API 82 从官方地址下载到 deps/，摘要不符则中止。API jar 仅作编译 classpath，不作 D8 程序输入。
 
-完整构建依次执行纯 Java 回归、javac、D8、aapt2、zipalign、apksigner，并检查 DEX 不包含 Xposed 框架类。输出 APK、SHA256SUMS.txt 及 apk-badging.txt 均在 build/。目前基线为 130 项纯 Java 检查，实际结果以运行输出为准。
+完整构建依次执行纯 Java 回归、javac、D8、aapt2、zipalign、apksigner，并检查 DEX 不包含 Xposed 框架类。输出 APK、SHA256SUMS.txt 及 apk-badging.txt 均在 build/。原型基线为 130 项纯 Java 检查；词库切片增加前缀／范围／失败及异步保序回归，实际数量以运行输出为准。构建产物清单 build/build-info.json 记录源码、版本和各摘要。
 
 ## 修改边界
 
@@ -50,3 +50,7 @@ npx -y metavr adb -d <device> shell am start -n com.m0e_n00b.questpinyinprobe/.P
 在管理器禁用模块并重启作用域进程，应回到原语言菜单及键盘。若行为异常，记录版本／摘要、字段种类、触发步骤和现象；敏感字段不要提供原输入。宿主升级不匹配时保留指纹保护，转入适配流程。
 
 报告必须区分本地检查通过、APK 已安装、Hook 已启动、用户交互已确认。首次公开发布前再完成原生词库和多字段设备验收，不能仅凭 APK 能编译宣布通用中文输入完成。
+
+## 真实词库自检
+
+ProbeActivity 的“运行真实词库自检”按钮在后台验证固定词组、前缀、部分消费和分隔符，不读取／编辑当前输入框。也可在明确设备授权后，以 am start -n com.m0e_n00b.questpinyinprobe/.ProbeActivity --ez dictionary_self_test true 启动。Android 日志标签为 QuestPinyinDictionary，仅含检查编号／结果。该自检证明模块进程内的 SQLite 资源链；VrShell 进程中的资源读取和原系统键盘交互仍需分别核对。

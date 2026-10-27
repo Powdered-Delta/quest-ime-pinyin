@@ -2,3 +2,4 @@
 *.apk binary
 *.jar binary
 *.keystore binary
+*.db binary

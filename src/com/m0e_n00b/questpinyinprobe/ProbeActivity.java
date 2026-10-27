@@ -20,12 +20,18 @@ public final class ProbeActivity extends Activity {
         content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(24, 24, 24, 24);
         TextView title = new TextView(this);
-        title.setText("系统键盘中文原型验证");
+        title.setText("Quest IME Pinyin 验证");
         title.setTextSize(24);
         content.addView(title);
         TextView instruction = new TextView(this);
         instruction.setText("从系统键盘语言菜单选择中文（拼音），输入 nihao，再选择候选“你好”。");
         content.addView(instruction);
+        Button selfTest = new Button(this);
+        selfTest.setText("运行真实词库自检");
+        selfTest.setOnClickListener(v -> DictionarySelfTest.run(this, getApplicationInfo().sourceDir,
+                (passed, check) -> runOnUiThread(() -> instruction.setText(passed ? "真实词库自检通过（9 项）" : "真实词库自检失败：检查 " + check))));
+        content.addView(selfTest);
+        if (getIntent().getBooleanExtra("dictionary_self_test", false)) selfTest.post(selfTest::performClick);
         EditText editor = new EditText(this);
         editor.setId(0x1001001);
         editor.setHint("在这里验证输入");

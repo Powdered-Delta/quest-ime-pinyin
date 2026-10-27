@@ -4,6 +4,7 @@ import android.app.Application;
 import android.content.Context;
 import android.content.pm.PackageInfo;
 import de.robv.android.xposed.IXposedHookLoadPackage;
+import de.robv.android.xposed.IXposedHookZygoteInit;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
@@ -11,10 +12,13 @@ import java.io.FileInputStream;
 import java.security.MessageDigest;
 
 /** Legacy API is intentional: Vector 2.2 supports it; no resource hooks are used. */
-public final class MainHook implements IXposedHookLoadPackage {
+public final class MainHook implements IXposedHookLoadPackage, IXposedHookZygoteInit {
     static final String TARGET = "com.oculus.vrshell";
     static final String APK_SHA256 = "9c2f1c503031f3adb21964463c8c89c13b790b45c5375ccbd3ed01c5b5c17ed4";
     private static boolean installed;
+    private static String moduleApk;
+
+    @Override public void initZygote(StartupParam startup) { moduleApk = startup.modulePath; }
 
     @Override public void handleLoadPackage(final XC_LoadPackage.LoadPackageParam load) throws Throwable {
         if (!TARGET.equals(load.packageName) || !TARGET.equals(load.processName)) return;
@@ -32,9 +36,9 @@ public final class MainHook implements IXposedHookLoadPackage {
                                 log("unsupported host; hooks not installed");
                                 return;
                             }
-                            HostAdapter adapter = new HostAdapter(context, load.classLoader);
+                            HostAdapter adapter = new HostAdapter(context, load.classLoader, moduleApk);
                             adapter.install();
-                            log("hooks installed; fixed-mapping probe; host fingerprint matched");
+                            log("hooks installed; sqlite pinyin backend; host fingerprint matched");
                         } catch (Throwable failure) {
                             // Do not print exception messages: they can contain editor text.
                             log("initialization failed: " + failure.getClass().getSimpleName());

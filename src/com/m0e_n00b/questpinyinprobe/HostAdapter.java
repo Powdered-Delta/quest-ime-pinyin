@@ -38,6 +38,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
+import java.util.concurrent.Executors;
 
 /** Version-pinned adapter. Host names below are verified against the recorded DEX. */
 final class HostAdapter {
@@ -46,7 +47,8 @@ final class HostAdapter {
     private static final String CHINESE_KEY = "quest-pinyin-probe.language";
     private final Context context;
     private final SharedPreferences preferences;
-    private final FixedPinyinSession session = new FixedPinyinSession();
+    private final AsyncPinyinSession session;
+    private WeakReference<InputConnection> sessionDestination = new WeakReference<>(null);
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Class<?> modelClass, keyClass, listenerClass, serviceClass, actionClass, eventClass;
     private final Constructor<?> modelConstructor;
@@ -61,7 +63,7 @@ final class HostAdapter {
     private int[] savedSuggestionPadding;
     private WeakReference<LinearLayout> bar = new WeakReference<>(null);
     private WeakReference<ViewGroup> suggestion = new WeakReference<>(null);
-    private boolean selected, failed, updating;
+    private boolean selected, failed, updating, replayingLanguage;
     private boolean awaitingCompositionUpdate;
     private boolean editing;
     private int[] deferredSelection;
@@ -75,7 +77,7 @@ final class HostAdapter {
     private final UnderlineSpan mirrorUnderline = new UnderlineSpan();
     private long generation;
 
-    HostAdapter(Context context, ClassLoader loader) throws Exception {
+    HostAdapter(Context context, ClassLoader loader, String moduleApk) throws Exception {
         this.context = context;
         preferences = context.getSharedPreferences("quest_pinyin_probe", Context.MODE_PRIVATE);
         selected = preferences.getBoolean("chinese_selected", false);
@@ -106,6 +108,17 @@ final class HostAdapter {
         requireField(keyClass, "A0m", RectF.class);
         serviceClass.getDeclaredMethod("A8H");
         serviceClass.getDeclaredMethod("onStartInput", EditorInfo.class, boolean.class);
+        session = new AsyncPinyinSession(new PinyinSession(new SqlitePinyinBackend(context, moduleApk)),
+                Executors.newSingleThreadExecutor(task -> { Thread thread = new Thread(task, "QuestPinyinDictionary"); thread.setDaemon(true); return thread; }),
+                task -> mainHandler.post(task), (result, hadComposition) -> {
+                    try {
+                        InputMethodService target = service.get();
+                        if (failed || !selected || !allowed(target)
+                                || sessionDestination.get() != target.getCurrentInputConnection()) return;
+                        if (result.error != null) diagnostic("dictionary query failed: " + result.error);
+                        apply(result, target, hadComposition);
+                    } catch (Throwable failure) { fail(failure); }
+                });
     }
 
     void install() throws Exception {
@@ -119,6 +132,23 @@ final class HostAdapter {
                     if (key == null || (boolean) get(key, "A0d")) return;
                     Object model = get(key, "A0O");
                     if (model != null && (int) get(model, "A0E") == LANGUAGE_MENU && code(key) == -3) {
+                        if (session.isPending() && !replayingLanguage) {
+                            Object listener = p.thisObject;
+                            Object[] arguments = p.args.clone();
+                            InputMethodService active = service.get();
+                            InputConnection destination = active == null ? null : active.getCurrentInputConnection();
+                            p.setResult(null);
+                            session.whenIdle(() -> {
+                                try {
+                                    InputMethodService target = service.get();
+                                    if (failed || target == null || destination != target.getCurrentInputConnection()) return;
+                                    replayingLanguage = true;
+                                    keyRelease.invoke(listener, arguments);
+                                } catch (Throwable failure) { fail(failure); }
+                                finally { replayingLanguage = false; }
+                            });
+                            return;
+                        }
                         WeakReference<Object> added = addedMenuKeys.get(model);
                         boolean chinese = added != null && key == added.get();
                         changeLanguage(chinese);
@@ -137,17 +167,21 @@ final class HostAdapter {
                     int eventCode = (int) get(keyEvent, "A00");
                     int kind = (Integer) p.args[1];
                     String input = (String) p.args[3];
-                    boolean hadComposition = !session.getComposition().isEmpty();
-                    FixedPinyinSession.Result result;
-                    if (eventCode == -5) result = session.backspace();
-                    else if (eventCode == 1 || (kind == 1 && " ".equals(input))) result = session.space();
-                    else if (eventCode == -2) result = session.enter();
-                    else if (kind == 1 && input != null) result = session.feed(input);
+                    AsyncPinyinSession.Action action;
+                    if (eventCode == -5) action = PinyinSession::backspace;
+                    else if (eventCode == 1 || (kind == 1 && " ".equals(input))) action = PinyinSession::space;
+                    else if (eventCode == -2) action = PinyinSession::enter;
+                    else if (kind == 1 && input != null) action = model -> model.feed(input);
                     else return;
+                    if (sessionDestination.get() != active.getCurrentInputConnection()) {
+                        session.reset();
+                        sessionDestination = new WeakReference<>(active.getCurrentInputConnection());
+                    }
                     generation++;
                     candidatesExpanded = false;
                     p.setResult(null);
-                    apply(result, active, hadComposition);
+                    session.submit(action);
+                    updateUi();
                 }
             };
             // Intercept before the host's Latin autocorrection/buffer edits. The lower boundary
@@ -274,7 +308,7 @@ final class HostAdapter {
         // The copied English key uses the host's own language transition. No new host enum is forged.
     }
 
-    private void apply(FixedPinyinSession.Result result, InputMethodService active, boolean hadComposition) throws Exception {
+    private void apply(PinyinSession.Result result, InputMethodService active, boolean hadComposition) throws Exception {
         final InputConnection destination = active.getCurrentInputConnection();
         if (destination == null) throw new IllegalStateException("Missing editor");
         final long revision = generation;
@@ -357,6 +391,7 @@ final class HostAdapter {
     private void resetSession(boolean clearEditor) throws Exception {
         if (clearEditor && !session.getComposition().isEmpty() && allowed(service.get())) send(service.get(), "COMPOSE", "");
         session.reset();
+        sessionDestination.clear();
         candidatesExpanded = false;
         cancelCompositionWait();
         generation++;
@@ -460,6 +495,22 @@ final class HostAdapter {
                 choices.addView(measuredCandidates.get(i), params);
             }
             row.addView(choices, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1));
+            if (session.getError() != null && !session.isPending()) {
+                Button retry = new Button(owner.getContext());
+                retry.setText("词库不可用 · 重试");
+                retry.setTextColor(Color.WHITE);
+                retry.setFocusable(false);
+                final long retryRevision = generation;
+                final InputConnection retryDestination = active.getCurrentInputConnection();
+                retry.setOnClickListener(v -> {
+                    if (failed || retryRevision != generation || !selected || !allowed(active)
+                            || retryDestination != active.getCurrentInputConnection()) return;
+                    sessionDestination = new WeakReference<>(retryDestination);
+                    session.submit(PinyinSession::refresh);
+                    try { updateUi(); } catch (Throwable failure) { fail(failure); }
+                });
+                row.addView(retry, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            }
             boolean hasOverflow = visibleCandidateCount < session.getCandidates().size();
             if (!hasOverflow) candidatesExpanded = false;
             Button expand = new Button(owner.getContext());
@@ -486,6 +537,7 @@ final class HostAdapter {
     private Button candidateButton(Context ui, int index, InputMethodService active) {
         Button button = new Button(ui);
         button.setText(session.getCandidates().get(index));
+        final String candidateId = session.getCandidateId(index);
         button.setTextSize(20);
         button.setTextColor(Color.WHITE);
         GradientDrawable background = new GradientDrawable();
@@ -508,10 +560,10 @@ final class HostAdapter {
                         || destination != target.getCurrentInputConnection()) return;
                 generation++;
                 candidatesExpanded = false;
-                boolean hadComposition = !session.getComposition().isEmpty();
-                apply(session.commitCandidate(index), target, hadComposition);
-                diagnostic("candidate applied: remaining=" + session.getComposition().length()
-                        + " choices=" + session.getCandidates().size());
+                if (session.isPending()) return;
+                sessionDestination = new WeakReference<>(destination);
+                session.submit(model -> model.commitCandidate(candidateId));
+                updateUi();
             } catch (Throwable failure) { fail(failure); }
         });
         return button;
@@ -615,7 +667,7 @@ final class HostAdapter {
         try { resetSession(true); } catch (Throwable ignored) { /* preserve host */ }
         failed = true;
         selected = false;
-        session.reset();
+        session.close();
         for (Map.Entry<Object, String> entry : changedIme.entrySet()) {
             try { set(entry.getKey(), "A0M", entry.getValue()); } catch (Exception ignored) { }
         }

@@ -3,7 +3,7 @@
 ```mermaid
 flowchart LR
   Keys[原系统按键] --> Hook[HostAdapter]
-  Hook --> Session[FixedPinyinSession]
+  Hook --> Session[AsyncPinyinSession / PinyinSession]
   Session --> Result[提交文本 + 剩余组合 + 候选]
   Result --> Actions[EditorActions 批次]
   Actions --> IC[宿主 InputConnection]
@@ -28,3 +28,9 @@ HostAdapter 在上层按键回调拦截识别事件，跳过原 Latin 缓冲处�
 UI 位于原 SuggestionPanelView 和 KeyboardView 的父 FrameLayout 内；不新增 Spatial Entity、Surface、Activity 来承载键盘。原键盘保持在展开层后，展开层拥有其全区域点击，背景空白也不得穿透按键。更改原视图可见性、边距和 padding 前保存，退出时恢复。
 
 未来替换 Session 的候选来源即可接入真实词库；数据库、排序和简繁方案不应进入 HostAdapter。未来候选结果需要携带编辑目标／会话／组合版本，确保异步查询不会回写已切换的字段。
+
+## SQLite 后端切片
+
+生产路径为 HostAdapter → AsyncPinyinSession（owner 线程）→ PinyinSession / SqlitePinyinBackend（单一 worker）→ owner 线程编辑批次。待处理动作按顺序执行，每条提交动作都按序应用，不通过只保留最新候选的方式丢弃提交文本。reset 提升 epoch 后忽略旧工作和回调。UI 在 pending 期间不显示旧候选；稳定快照通过候选 ID 选择，generation 与 InputConnection 身份继续拒绝陈旧点击。
+
+MainHook 实现 legacy initZygote，记录模块 APK 路径。SqlitePinyinBackend 从 APK 的 assets/ime/google_pinyin.db 校验解压到宿主 filesDir/quest_ime_pinyin，数据库始终只读；模块 APK 路径不是宿主 assets 路径。

@@ -10,7 +10,7 @@ public final class EditorActions {
         default void end() throws Exception { }
     }
 
-    public static void emit(FixedPinyinSession.Result result, boolean hadComposition, Sink sink)
+    public static void emit(PinyinSession.Result result, boolean hadComposition, Sink sink)
             throws Exception {
         sink.begin();
         try {
